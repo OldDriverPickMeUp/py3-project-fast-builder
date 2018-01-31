@@ -9,7 +9,7 @@ services:
     env_file:
       - dev.env
     volumes:
-      - ./log:/var/lib/postgresql/data{% else %}
+      - ./postgresql:/var/lib/postgresql/data{% else %}
   postgres:
     image: postgres:10
     ports:
