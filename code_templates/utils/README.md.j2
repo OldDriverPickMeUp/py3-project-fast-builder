@@ -1,0 +1,39 @@
+# {{ project_name |upper }}
+
+
+Enter Your Basic Describe to {{ project_name }}/code_templates/utils/README.md.j2
+
+## Tasks
+
+{% if tasks %}
+{% for task in tasks %}
+
+- SERVICE_NAME {{ task[0] }}  FILENAME {{ task[1] }}
+
+{% endfor %}
+{% else %}
+No task added! To add task:
+
+```
+$ python manage.py add-task FILENAME
+```
+
+{% endif %}
+
+## How to start
+
+
+```
+$ python manage.py start FILENAME
+```
+
+
+```
+$ docker-compose -f docker/docker-compose.yml up -d --build SERVICE_NAME
+```
+
+
+## Config Dev Network
+
+sudo ifconfig lo:1 10.66.66.66
+
