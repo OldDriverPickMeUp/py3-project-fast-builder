@@ -1,5 +1,7 @@
 import importlib
 import json
+from logging import FileHandler, StreamHandler, basicConfig
+from logging.handlers import RotatingFileHandler
 
 import click
 import os
@@ -13,40 +15,8 @@ def get_project_name():
     return os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
 
-JINJA_ENV = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(__file__))))
-
-
-@click.group()
-def cli():
-    pass
-
-
-@cli.command()
-@click.argument('filename', type=click.Path(exists=True))
-@click.option('--log-dir', default='.log', help='log file base folder')
-@click.option('--debug/--no-debug', default=False, help='whether in debug mode or not')
-def start(filename, log_dir, debug):
-    if not filename.endswith('.py'):
-        click.echo('error input filename: {}'.format(filename))
-        return
-
-    module_name = get_module_name(filename)
-    service_name = get_service_name(module_name)
-    stdout_logger = _StdoutLogger(service_name, log_dir, debug=debug)
-    stderr_logger = _StderrLogger(service_name, log_dir, debug=debug)
-    stderr_logger.activate()
-    stdout_logger.activate()
-    module = importlib.import_module(module_name)
-    start_names = ['start_script', 'start_service', 'startup', 'start']
-    for each_name in start_names:
-        start_func = getattr(module, each_name, None)
-        if callable(start_func):
-            start_func()
-            break
-    else:
-        click.echo('can not find any start function {} in {}'.format(start_names, filename))
-    stdout_logger.deactivate()
-    stderr_logger.deactivate()
+def get_logger_file_name(base_log_path, task_name):
+    return base_log_path + task_name + '-stdout.log', base_log_path + task_name + '-stderr.log'
 
 
 def get_module_name(filename):
@@ -58,49 +28,46 @@ def get_service_name(module_name):
     return module_name.replace('.', '-')
 
 
-class _BaseOutStream:
-    _stream_type = None
-
-    def __init__(self, task_name, base_log_path, debug=False):
-        self._check_exist_and_mk(base_log_path)
-        self._debug = debug
-        if self._debug:
-            self.log_name = os.path.join(base_log_path, 'DEBUG-' + task_name + '-' + self._stream_type + '.log')
-        else:
-            self.log_name = os.path.join(base_log_path, task_name + '-' + self._stream_type + '.log')
-
-    def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-
-    @staticmethod
-    def _check_exist_and_mk(path):
-        dir_path = os.path.abspath(path)
-        if not os.path.exists(dir_path):
-            os.mkdir(dir_path)
-
-    def flush(self):
-        # this flush method is needed for python 3 compatibility.
-        # this handles the flush command by doing nothing.
-        # you might want to specify some extra behavior here.
-        pass
-
-    def activate(self):
-        self.terminal = getattr(sys, self._stream_type)
-        self.log = open(self.log_name, 'a')
-        setattr(sys, self._stream_type, self)
-
-    def deactivate(self):
-        setattr(sys, self._stream_type, self.terminal)
-        self.log.close()
+JINJA_ENV = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(__file__))))
 
 
-class _StdoutLogger(_BaseOutStream):
-    _stream_type = 'stdout'
+def config_logging(stdout_file, stderr_file):
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG')
+    max_bytes = 2 ** 10 * 10
+    stdout_handler = RotatingFileHandler(stdout_file, maxBytes=max_bytes, backupCount=100)
+    # stdout_handler.setLevel(LOG_LEVEL)
+    stderr_handler = RotatingFileHandler(stderr_file, maxBytes=max_bytes, backupCount=100)
+    stderr_handler.setLevel('ERROR')
+    console_handler = StreamHandler(sys.stdout)
+    # console_handler.setLevel(LOG_LEVEL)
+    basicConfig(handlers=[stderr_handler, stdout_handler, console_handler], level=LOG_LEVEL)
 
 
-class _StderrLogger(_BaseOutStream):
-    _stream_type = 'stderr'
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@click.option('--log-dir', default='.log', help='log file base folder')
+def start(filename, log_dir, debug):
+    if not filename.endswith('.py'):
+        click.echo('error input filename: {}'.format(filename))
+        return
+
+    module_name = get_module_name(filename)
+    service_name = get_service_name(module_name)
+    module = importlib.import_module(module_name)
+    start_names = ['start_script', 'start_service', 'startup', 'start']
+    for each_name in start_names:
+        start_func = getattr(module, each_name, None)
+        if callable(start_func):
+            config_logging(*get_logger_file_name(log_dir, service_name))
+            start_func()
+            break
+    else:
+        click.echo('can not find any start function {} in {}'.format(start_names, filename))
 
 
 @cli.command('init')
