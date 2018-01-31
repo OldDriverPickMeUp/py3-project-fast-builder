@@ -6,7 +6,14 @@ import os
 
 import sys
 
-import jinja2
+from jinja2 import Environment, FileSystemLoader
+
+
+def get_project_name():
+    return os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+
+
+JINJA_ENV = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(__file__))))
 
 
 @click.group()
@@ -16,8 +23,8 @@ def cli():
 
 @cli.command()
 @click.argument('filename', type=click.Path(exists=True))
-@click.option('--log-dir', default='.log')
-@click.option('--debug/--prod', default=False)
+@click.option('--log-dir', default='.log', help='log file base folder')
+@click.option('--debug/--no-debug', default=False, help='whether in debug mode or not')
 def start(filename, log_dir, debug):
     if not filename.endswith('.py'):
         click.echo('error input filename: {}'.format(filename))
@@ -96,44 +103,16 @@ class _StderrLogger(_BaseOutStream):
     _stream_type = 'stderr'
 
 
-@cli.command('docker-compose-gen')
-@click.argument('template_name', nargs=1)
-@click.argument('filename', type=click.Path(exists=True))
-@click.option('--dev/--prod', default=True)
-def docker_compose_gen(template_name, filename, dev):
-    if not filename.endswith('.py'):
-        click.echo('error input filename: {}'.format(filename))
-        return
-
-    module_name = get_module_name(filename)
-    service_name = get_service_name(module_name)
-    template_path = os.path.sep.join(['code_templates', 'docker-compose', template_name + '.j2'])
-    project_name = get_project_name()
-    if not os.path.exists(template_path):
-        click.echo('template {} does not exist'.format(template_path))
-        return
-    with open(template_path) as f:
-        template = jinja2.Template(f.read())
-        click.echo('template for {}'.format(filename))
-        click.echo(template.render(service_name=service_name, filename=filename, dev=dev,
-                                   project_name=project_name))
-
-
-def get_project_name():
-    return os.path.basename(os.path.dirname(os.path.abspath(__file__)))
-
-
-@cli.command('docker-gen')
-@click.option('--dev/--prod', default=True)
+@cli.command('init')
 @click.option('--postgres/--no-postgres', default=False)
 @click.option('--redis/--no-redis', default=False)
-def docker_gen(dev, postgres, redis):
+def init(postgres, redis):
     if not os.path.exists(os.path.join(os.getcwd(), 'docker')):
         os.mkdir('docker')
     need_files = ['dev.env', 'docker-compose.yml', 'Dockerfile']
     render_data = {
         'project_name': get_project_name(),
-        'dev': dev,
+        'dev': True,
         'postgres': postgres,
         'redis': redis
     }
@@ -143,11 +122,66 @@ def docker_gen(dev, postgres, redis):
         if not os.path.exists(template_path):
             click.echo('template {} does not exist'.format(template_path))
             return
-        with open(template_path) as f:
-            template = jinja2.Template(f.read())
-            with open(out_file_path, 'w') as f:
-                f.write(template.render(**render_data))
-                click.echo('{} built'.format(each_template))
+        template = JINJA_ENV.get_template(template_path)
+        with open(out_file_path, 'w') as f:
+            f.write(template.render(**render_data))
+            click.echo('{} built'.format(out_file_path))
+
+    need_files = ['.gitignore', '.python-version']
+    for each_template in need_files:
+        out_file_path = each_template
+        template_path = os.path.sep.join(['code_templates', 'utils', each_template + '.j2'])
+        if not os.path.exists(template_path):
+            click.echo('template {} does not exist'.format(template_path))
+            return
+        template = JINJA_ENV.get_template(template_path)
+        with open(out_file_path, 'w') as f:
+            f.write(template.render())
+            click.echo('{} built'.format(out_file_path))
+
+
+@cli.command('docker-compose-service')
+@click.argument('filename', type=click.Path(exists=True))
+@click.option('--dev/--prod', default=True)
+def docker_compose_service(filename, dev):
+    if not filename.endswith('.py'):
+        click.echo('error input filename: {}'.format(filename))
+        return
+
+    module_name = get_module_name(filename)
+    service_name = get_service_name(module_name)
+    template_path = os.path.sep.join(['code_templates', 'docker-compose', 'service.j2'])
+    project_name = get_project_name()
+    if not os.path.exists(template_path):
+        click.echo('template {} does not exist'.format(template_path))
+        return
+    template = JINJA_ENV.get_template(template_path)
+    click.echo('template for {}'.format(filename))
+    click.echo(template.render(service_name=service_name, filename=filename, dev=dev,
+                               project_name=project_name))
+
+
+@cli.command('build-docker-compose')
+@click.option('--dev/--prod', default=True)
+@click.option('--postgres/--no-postgres', default=False)
+@click.option('--redis/--no-redis', default=False)
+def build_docker_compose(dev, postgres, redis):
+    need_files = ['docker-compose.yml']
+    tasks = Tasks.get_tasks()
+    render_data = {
+        'project_name': get_project_name(),
+        'dev': dev,
+        'postgres': postgres,
+        'redis': redis,
+        'tasks': tasks
+    }
+    for each_template in need_files:
+        template_path = os.path.sep.join(['code_templates', 'docker', each_template + '.j2'])
+        if not os.path.exists(template_path):
+            click.echo('template {} does not exist'.format(template_path))
+            return
+        template = JINJA_ENV.get_template(template_path)
+        click.echo(template.render(**render_data))
 
 
 class Tasks:
@@ -179,10 +213,11 @@ class Tasks:
         service_name = get_service_name(get_module_name(filename))
         task = tasks.get(service_name)
         if task:
-            click.echo('{} -- {} already exists')
+            click.echo('{} -- {} already exists'.format(service_name, filename))
             return
         tasks[service_name] = filename
         cls.save_tasks(tasks)
+        click.echo('add task: {} -- {}'.format(service_name, filename))
 
     @classmethod
     def show_tasks(cls):
@@ -202,15 +237,13 @@ class Tasks:
             click.echo('can not find task {} for {}'.format(service_name, filename))
 
     @classmethod
-    def update_readme(cls):
+    def readme(cls):
         tasks = cls.get_tasks()
         if not os.path.exists(cls._readme_template):
             click.echo('can not find README.md template {}'.format(cls._readme_template))
             return
-        with open(cls._readme_template) as f:
-            template = jinja2.Template(f.read())
-        with open(cls._readme, 'w') as f:
-            f.write(template.render(tasks=tasks.items(), project_name=get_project_name()))
+        template = JINJA_ENV.get_template(cls._readme_template)
+        click.echo(template.render(tasks=tasks.items(), project_name=get_project_name()))
 
 
 @cli.command('add-task')
@@ -220,7 +253,6 @@ def add_task(filename):
         click.echo('error input filename: {}'.format(filename))
         return
     Tasks.add_task(filename)
-    Tasks.update_readme()
 
 
 @cli.command('rm-task')
@@ -230,7 +262,6 @@ def rm_task(filename):
         click.echo('error input filename: {}'.format(filename))
         return
     Tasks.remove_task(filename)
-    Tasks.update_readme()
 
 
 @cli.command('tasks')
@@ -238,25 +269,9 @@ def tasks():
     Tasks.show_tasks()
 
 
-@cli.command('update-readme')
-def update_readme():
-    Tasks.update_readme()
-
-
-@cli.command('build-utils')
-def build_utils():
-    need_files = ['.gitignore', '.python-version']
-    for each_template in need_files:
-        out_file_path = each_template
-        template_path = os.path.sep.join(['code_templates', 'utils', each_template + '.j2'])
-        if not os.path.exists(template_path):
-            click.echo('template {} does not exist'.format(template_path))
-            return
-        with open(template_path) as f:
-            template = jinja2.Template(f.read())
-            with open(out_file_path, 'w') as f:
-                f.write(template.render())
-                click.echo('{} built'.format(each_template))
+@cli.command('readme')
+def readme():
+    Tasks.readme()
 
 
 if __name__ == '__main__':

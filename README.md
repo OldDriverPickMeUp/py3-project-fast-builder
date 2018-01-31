@@ -8,6 +8,9 @@ This project is used to have fast build of python3 project using docker.
 python3
 click
 jinja2
+```
+$ pip install click jinja2
+```
 
 ## BEFORE START
 
@@ -32,10 +35,11 @@ There are some basic usage below.
 
 ### STEP 1 -- copy files and build your project env
 
-copy this project into your project
+Copy manage.py and code_templates into your project
 ```
 $ mkdir your-project
-$ cp -r some-folder/py36-project-fast-builder/* your-project
+$ cp some-folder/py36-project-fast-builder/manage.py your-project
+$ cp -r some-folder/py36-project-fast-builder/code_templates your-project
 $ cd you-project
 $ python -m venv venv
 ```
@@ -44,18 +48,20 @@ Activite virtualenv
 $ . venv/bin/activite
 ```
 
-### SETP 2 -- build docker and other basic files
+### SETP 2 -- Initialize the develop environment
 
 
-Build docker with postgres and redis
+This will build development environment docker file including docker/dev.env docker/docker-compose.yml docker/Dockerfile.
 
+.python-version and .gitingore will be built in the base project folder.
 ```
-$ python manage.py docker-gen --postgres --redis
+$ python manage.py init --postgres --redis
 ```
-Build .gitignore and .python-verision
-```
-$ python manage.py build-utils
-```
+Option --postgres will add postgressql for docker-compose.yml and dev.env.
+
+Option --redis will add redis for docker-compose.yml and dev.env.
+
+will add --nginx soon.
 
 ## ADVANCED
 
@@ -66,9 +72,8 @@ There are some advanced usage below.
 There will be a file named tasks.json in project root folder to record all the tasks you have.
 By typing this command:
 ```
-$ python manage.py update-readme
+$ python manage.py readme > your_README.md
 ```
-A README.md file will be generated in your project root folder.
 The readme templates is in code_templates/utils/README.md.j2.
 You can easily custom it.
 
@@ -87,6 +92,9 @@ $ python manage.py rm-task PYTHON_FILE_PATH
 Both add-task and rm-task will cause an update of README.md
 
 After we have all tasks,it is easier to generate the docker-compose.yml file
+```
+$ python manage.py build-docker-compose --postgres --redis --dev > docker/docker-compose.yml
+```
 
 ### SHOW ALL TASKS
 
@@ -112,21 +120,21 @@ And the command will try start_service(), startup(), start() as the entry point 
 
 Use below command you can generate docker-compse for each task.
 ```
-$ python manage.py docker-compose-gen --dev FILENAME
+$ python manage.py docker-compose-service --dev FILENAME
 ```
 This command will generate the service yaml code of this python file
 
 You can custom the template in code_templates/docker-compose/service.j2.
 
 ### LOGGING
-If you are using logging module,you must use log.logger as your log.
+If you are using logging module,you'd better use log.logger as your log.
 ```
 from log import logger
 ```
 
 If you are using print() as a log, everything will be okay.
  
-# GET HELP
+## GET HELP
 
 ```
 $ python manage.py --help
@@ -134,6 +142,38 @@ $ python manage.py --help
 ```
 $ python manage.py command --help
 ```
+
+## ALL COMMANDS
+
+### add-task
+
+Add a task to tasks.json, will be used to generate docker-compose.yml and readme.
+```
+Usage: manage.py add-task FILENAME
+```
+FILENAME is a .py file where your task entry point in, just like `test/task2.py`
+
+### build-docker-compose
+Echo your docker-compose.yml built from the current tasks.json.
+So you can replace your current docker-compose.yml.
+
+### docker-compose-service
+Echo a single docker-compose.yml service is built from a .py file
+ 
+### init
+Initialize your project.
+
+### readme
+Echo a README is built from current tasks.json
+
+### rm-task
+Remove a task form tasks.json
+### start
+Start a task from a .py file
+
+### tasks
+Show all tasks in tasks.json
+
 
 
 

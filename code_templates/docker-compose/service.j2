@@ -1,25 +1,20 @@
-{% macro input(name, value='', type='text') %}
-{% if dev %}
-
-{{ service_name }}:
-    build:
-      context: ../
-      dockerfile: docker/Dockerfile
-    command: python manage.py start --log-dir=/var/log/{{ project_name }} {{ filename }}
-    env_file:
-      - dev.env
-    volumes:
-      - ./log:/var/log/{{ project_name }}
-{% else %}
-
-{{ service_name }}:
-    image: docker-image-{{ project_name }}:latest
-    command: python manage.py start --log-dir=/var/log/{{ project_name }} {{ filename }}
-    working_dir: /opt/code/
-    env_file:
-      - ~/.project_env/env/puller.env
-    volumes:
-      - ~/log/{{ project_name }}:/var/log/{{ project_name }}
-
-{% endif %}
-{% macro input(name, value='', type='text') %}
+{%- if dev %}
+  {{ service_name }}:
+      build:
+        context: ../
+        dockerfile: docker/Dockerfile
+      command: python manage.py start --log-dir=/var/log/{{ project_name }} {{ filename }}
+      env_file:
+        - dev.env
+      volumes:
+        - ./log:/var/log/{{ project_name }}
+{%- else %}
+  {{ service_name }}:
+      image: docker-image-{{ project_name }}:{% raw %}{{ version }}{% endraw %}
+      command: python manage.py start --log-dir=/var/log/{{ project_name }} {{ filename }}
+      working_dir: /opt/code/
+      env_file:
+        - ~/.project_env/env/puller.env
+      volumes:
+        - ~/log/{{ project_name }}:/var/log/{{ project_name }}
+{%- endif %}

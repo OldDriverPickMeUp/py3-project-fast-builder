@@ -1,7 +1,9 @@
 version: '3'
 
 services:
-  {% if postgres %}{% if dev %}
+
+  {%- if postgres %}
+    {% if dev %}
   postgres:
     image: postgres:10
     ports:
@@ -9,7 +11,8 @@ services:
     env_file:
       - dev.env
     volumes:
-      - ./postgresql:/var/lib/postgresql/data{% else %}
+      - ./postgresql:/var/lib/postgresql/data
+    {%- else %}
   postgres:
     image: postgres:10
     ports:
@@ -17,17 +20,30 @@ services:
     env_file:
       - ~/.{{ project_name }}_env/postgres.env
     volumes:
-      - ~/database/postgres:/var/lib/postgresql/data{% endif %}{% endif %}
-  {% if redis %}{% if dev %}
+      - ~/database/postgres:/var/lib/postgresql/data
+    {%- endif %}
+  {%- endif %}
+
+  {%- if redis %}
+    {% if dev %}
   redis:
     image: redis:3
     ports:
       - "6379:6379"
     env_file:
-      - dev.env{% else %}
+      - dev.env
+    {%- else %}
   redis:
     image: redis:3
     ports:
       - "6379:6379"
     env_file:
-      - ~/.{{ project_name }}_env/postgres.env{% endif %}{% endif %}
+      - ~/.{{ project_name }}_env/postgres.env
+    {%- endif %}
+  {%- endif %}
+
+  {%- if tasks %}
+  {%- for service_name, filename in tasks.items() %}
+  {% include "code_templates/docker-compose/service.j2"%}
+  {%- endfor %}
+  {%- endif %}
