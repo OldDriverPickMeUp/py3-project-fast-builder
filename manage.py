@@ -224,8 +224,6 @@ class PackageInfo:
     def add_database(self, database_type):
         databases = self.get_databases()
         if self.has_database_type(database_type):
-            if database_type in databases.keys():
-                return 'already have database {}'.format(database_type)
             databases[database_type] = True
             self.save_pkg()
             return 'add database {}'.format(database_type)
