@@ -99,12 +99,8 @@ def init(force, redis, postgres):
         os.mkdir('docker')
     if redis:
         pkg_info.add_database('redis')
-    else:
-        pkg_info.remove_database('redis')
     if postgres:
         pkg_info.add_database('postgres')
-    else:
-        pkg_info.remove_database('postgres')
     if not pkg_info.inited():
         pkg_info.save_pkg()
 
