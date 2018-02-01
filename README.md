@@ -57,7 +57,7 @@ This will build development environment docker file including docker/dev.env doc
 ```
 $ python manage.py init --postgres --redis
 ```
-Option --postgres will add postgressql for docker-compose.yml and dev.env.
+Option --postgres will add postgresql for docker-compose.yml and dev.env.
 
 Option --redis will add redis for docker-compose.yml and dev.env.
 
@@ -69,7 +69,7 @@ There are some advanced usage below.
 
 ### AUTO BUILD README.md
 
-There will be a file named tasks.json in project root folder to record all the tasks you have.
+There will be a file named package.json in project root folder to record all the tasks you have.
 By typing this command:
 ```
 $ python manage.py readme > your_README.md
@@ -152,14 +152,14 @@ $ python manage.py command --help
 
 ### add-task
 
-Add a task to tasks.json, will be used to generate docker-compose.yml and readme.
+Add a task to package.json, will be used to generate docker-compose.yml and readme.
 ```
 Usage: manage.py add-task FILENAME
 ```
 FILENAME is a .py file where your task entry point in, just like `test/task2.py`
 
 ### build-docker-compose
-Echo your docker-compose.yml built from the current tasks.json.
+Echo your docker-compose.yml built from the current package.json.
 So you can replace your current docker-compose.yml.
 
 ### docker-compose-service
@@ -169,15 +169,26 @@ Echo a single docker-compose.yml service is built from a .py file
 Initialize your project.
 
 ### readme
-Echo a README is built from current tasks.json
+Echo a README is built from current package.json
 
 ### rm-task
-Remove a task form tasks.json
+Remove a task from package.json
 ### start
 Start a task from a .py file
 
 ### tasks
-Show all tasks in tasks.json
+Show all tasks in package.json
+
+### add-database
+Add a database for this project
+```
+Usage: manage.py add-database DATABASE_TYPE
+```
+### rm-database
+Remove database for this project
+
+### databases
+Show all database in package.json
 
 
 

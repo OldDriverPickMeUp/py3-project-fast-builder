@@ -79,7 +79,6 @@ def start(filename, log_dir):
             config_logging(*get_logger_file_name(log_dir, service_name))
             try:
                 start_func()
-
             except Exception:
                 log_exception(*sys.exc_info())
             break
@@ -88,27 +87,33 @@ def start(filename, log_dir):
 
 
 @cli.command('init')
-@click.option('--postgres/--no-postgres', default=False)
-@click.option('--redis/--no-redis', default=False)
-def init(postgres, redis):
+@click.option('-f', '--force', is_flag=True, help='do initialization anyway')
+@click.option('--redis', is_flag=True, help='add redis to package info')
+@click.option('--postgres', is_flag=True, help='add postgres to package info')
+def init(force, redis, postgres):
+    pkg_info = PackageInfo()
+    if pkg_info.inited() and force is not True:
+        click.echo('project {} already inited, want to init again add -f/--force option'.format(get_project_name()))
+        return
     if not os.path.exists(os.path.join(os.getcwd(), 'docker')):
         os.mkdir('docker')
+    if redis:
+        pkg_info.add_database('redis')
+    else:
+        pkg_info.remove_database('redis')
+    if postgres:
+        pkg_info.add_database('postgres')
+    else:
+        pkg_info.remove_database('postgres')
+    if not pkg_info.inited():
+        pkg_info.save_pkg()
+
     need_files = ['dev.env', 'docker-compose.yml', 'Dockerfile']
-    render_data = {
-        'project_name': get_project_name(),
-        'dev': True,
-        'postgres': postgres,
-        'redis': redis
-    }
     for each_template in need_files:
         template_path = os.path.sep.join(['code_templates', 'docker', each_template + '.j2'])
         out_file_path = os.path.sep.join(['docker', each_template])
-        if not os.path.exists(template_path):
-            click.echo('template {} does not exist'.format(template_path))
-            return
-        template = JINJA_ENV.get_template(template_path)
         with open(out_file_path, 'w') as f:
-            f.write(template.render(**render_data))
+            f.write(pkg_info.render_template(template_path, dev=True))
             click.echo('{} built'.format(out_file_path))
 
     need_files = ['.gitignore', '.python-version']
@@ -140,94 +145,118 @@ def docker_compose_service(filename, dev):
         click.echo('template {} does not exist'.format(template_path))
         return
     template = JINJA_ENV.get_template(template_path)
-    click.echo('template for {}'.format(filename))
     click.echo(template.render(service_name=service_name, filename=filename, dev=dev,
                                project_name=project_name))
 
 
 @cli.command('build-docker-compose')
-@click.option('--dev/--prod', default=True)
-@click.option('--postgres/--no-postgres', default=False)
-@click.option('--redis/--no-redis', default=False)
-def build_docker_compose(dev, postgres, redis):
-    need_files = ['docker-compose.yml']
-    tasks = Tasks.get_tasks()
-    render_data = {
-        'project_name': get_project_name(),
-        'dev': dev,
-        'postgres': postgres,
-        'redis': redis,
-        'tasks': tasks
-    }
-    for each_template in need_files:
-        template_path = os.path.sep.join(['code_templates', 'docker', each_template + '.j2'])
-        if not os.path.exists(template_path):
-            click.echo('template {} does not exist'.format(template_path))
-            return
-        template = JINJA_ENV.get_template(template_path)
-        click.echo(template.render(**render_data))
+@click.option('--dev/--prod', default=True, help='default in develop mode, add --prod to use product mode')
+def build_docker_compose(dev):
+    pkg_info = PackageInfo()
+    click.echo(pkg_info.render_template('code_templates/docker/docker-compose.yml.j2', dev=dev))
 
 
-class Tasks:
-    _filename = 'tasks.json'
-    _readme = 'README.md'
-    _readme_template = os.path.sep.join(['code_templates', 'utils', _readme + '.j2'])
+class PackageInfo:
+    _filename = 'package.json'
+
+    def __init__(self):
+        self._pkg_data = self.load_pkg_file()
+
+    @staticmethod
+    def init_pkg():
+        return {
+            'tasks': {},
+            'databases': {},
+            'inited': False
+        }
 
     @classmethod
-    def check_and_build_task_file(cls):
+    def load_pkg_file(cls):
         if not os.path.exists(cls._filename):
-            with open(cls._filename, 'w') as f:
-                json.dump({}, f)
+            return cls.init_pkg()
+        else:
+            f = open(cls._filename)
+            pkg_data = json.load(f)
+            f.close()
+            return pkg_data
 
-    @classmethod
-    def get_tasks(cls):
-        cls.check_and_build_task_file()
-        with open(cls._filename) as f:
-            tasks = json.load(f)
-        return tasks
+    def save_pkg(self):
+        self._pkg_data['inited'] = True
+        with open(self._filename, 'w') as f:
+            json.dump(self._pkg_data, f, indent=4)
 
-    @classmethod
-    def save_tasks(cls, tasks):
-        with open(cls._filename, 'w') as f:
-            json.dump(tasks, f)
+    def inited(self):
+        return self._pkg_data['inited']
 
-    @classmethod
-    def add_task(cls, filename):
-        tasks = cls.get_tasks()
+    def get_tasks(self):
+        return self._pkg_data['tasks']
+
+    def get_databases(self):
+        return self._pkg_data['databases']
+
+    def add_task(self, filename):
+        tasks = self.get_tasks()
         service_name = get_service_name(get_module_name(filename))
         task = tasks.get(service_name)
         if task:
-            click.echo('{} -- {} already exists'.format(service_name, filename))
-            return
+            return '{} -- {} already exists'.format(service_name, filename)
         tasks[service_name] = filename
-        cls.save_tasks(tasks)
-        click.echo('add task: {} -- {}'.format(service_name, filename))
+        self.save_pkg()
+        return 'add task: {} -- {}'.format(service_name, filename)
 
-    @classmethod
-    def show_tasks(cls):
-        tasks = cls.get_tasks()
+    def iter_tasks(self):
+        tasks = self.get_tasks()
         for service, file in tasks.items():
-            click.echo('{} -- {}'.format(service, file))
+            yield '{} -- {}'.format(service, file)
 
-    @classmethod
-    def remove_task(cls, filename):
+    def remove_task(self, filename):
         service_name = get_service_name(get_module_name(filename))
-        tasks = cls.get_tasks()
+        tasks = self.get_tasks()
         if tasks.get(service_name):
             del tasks[service_name]
-            cls.save_tasks(tasks)
-            click.echo('removed: {} for {}'.format(service_name, filename))
+            self.save_pkg()
+            return 'removed: {} for {}'.format(service_name, filename)
         else:
-            click.echo('can not find task {} for {}'.format(service_name, filename))
+            return 'can not find task {} for {}'.format(service_name, filename)
 
-    @classmethod
-    def readme(cls):
-        tasks = cls.get_tasks()
-        if not os.path.exists(cls._readme_template):
-            click.echo('can not find README.md template {}'.format(cls._readme_template))
-            return
-        template = JINJA_ENV.get_template(cls._readme_template)
-        click.echo(template.render(tasks=tasks.items(), project_name=get_project_name()))
+    @staticmethod
+    def has_database_type(database_type):
+        if database_type in ['postgres', 'redis']:
+            return True
+        return False
+
+    def add_database(self, database_type):
+        databases = self.get_databases()
+        if self.has_database_type(database_type):
+            if database_type in databases.keys():
+                return 'already have database {}'.format(database_type)
+            databases[database_type] = True
+            self.save_pkg()
+            return 'add database {}'.format(database_type)
+        return 'don\'t support database {}'.format(database_type)
+
+    def remove_database(self, database_type):
+        databases = self.get_databases()
+        if self.has_database_type(database_type):
+            if database_type not in databases.keys():
+                return 'there is no {} database'.format(database_type)
+            databases[database_type] = False
+            self.save_pkg()
+            return 'removed: database {}'.format(database_type)
+        return 'don\'t support database {}'.format(database_type)
+
+    def iter_databases(self):
+        databases = self.get_databases()
+        for database_type in databases.keys():
+            yield database_type
+
+    def render_template(self, template_path, **kwargs):
+        if not os.path.exists(template_path):
+            return 'can not find README.md template {}'.format(template_path)
+        template = JINJA_ENV.get_template(template_path)
+        return template.render(tasks=self.get_tasks(),
+                               project_name=get_project_name(),
+                               **self.get_databases(), **kwargs)
 
 
 @cli.command('add-task')
@@ -236,7 +265,8 @@ def add_task(filename):
     if not filename.endswith('.py'):
         click.echo('error input filename: {}'.format(filename))
         return
-    Tasks.add_task(filename)
+    pkg_info = PackageInfo()
+    click.echo(pkg_info.add_task(filename))
 
 
 @cli.command('rm-task')
@@ -245,17 +275,42 @@ def rm_task(filename):
     if not filename.endswith('.py'):
         click.echo('error input filename: {}'.format(filename))
         return
-    Tasks.remove_task(filename)
+    pkg_info = PackageInfo()
+    click.echo(pkg_info.remove_task(filename))
+
+
+@cli.command('add-database')
+@click.argument('database_type')
+def add_database(database_type):
+    pkg_info = PackageInfo()
+    click.echo(pkg_info.add_database(database_type))
+
+
+@cli.command('rm-database')
+@click.argument('database_type')
+def rm_database(database_type):
+    pkg_info = PackageInfo()
+    click.echo(pkg_info.remove_database(database_type))
 
 
 @cli.command('tasks')
 def tasks():
-    Tasks.show_tasks()
+    pkg_info = PackageInfo()
+    for task in pkg_info.iter_tasks():
+        click.echo(task)
+
+
+@cli.command('databases')
+def databases():
+    pkg_info = PackageInfo()
+    for database in pkg_info.iter_databases():
+        click.echo(database)
 
 
 @cli.command('readme')
 def readme():
-    Tasks.readme()
+    pkg_info = PackageInfo()
+    click.echo(pkg_info.render_template('code_templates/utils/README.md.j2'))
 
 
 if __name__ == '__main__':
