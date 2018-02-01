@@ -127,12 +127,17 @@ This command will generate the service yaml code of this python file
 You can custom the template in code_templates/docker-compose/service.j2.
 
 ### LOGGING
-If you are using logging module,you'd better use log.logger as your log.
+If you start your task by
 ```
-from log import logger
+$ python manage.py start --log-dir=/var/log task3.py
 ```
+`/var/log/project_name/task3-stdout.log` and `/var/log/project_name/task3-stderr.log` will be built to record all records maded from python logging module.
 
-If you are using print() as a log, everything will be okay.
+In stdout log file, log level defined in your environment variable will be used.
+And the stdout log file will not record log level above logging.WARNING.
+
+In stderr log file, all log records with level higher than warning will be recorded.
+And all uncaught Exception will be logged into this file as well.
  
 ## GET HELP
 

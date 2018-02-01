@@ -1,6 +1,6 @@
 import importlib
 import json
-from logging import FileHandler, StreamHandler, basicConfig
+import logging
 from logging.handlers import RotatingFileHandler
 
 import click
@@ -16,7 +16,8 @@ def get_project_name():
 
 
 def get_logger_file_name(base_log_path, task_name):
-    return base_log_path + task_name + '-stdout.log', base_log_path + task_name + '-stderr.log'
+    return os.path.join(base_log_path, task_name + '-stdout.log'), os.path.join(base_log_path,
+                                                                                task_name + '-stderr.log')
 
 
 def get_module_name(filename):
@@ -31,16 +32,26 @@ def get_service_name(module_name):
 JINJA_ENV = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(__file__))))
 
 
+class NoErrorFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno < logging.ERROR
+
+
 def config_logging(stdout_file, stderr_file):
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG')
     max_bytes = 2 ** 10 * 10
     stdout_handler = RotatingFileHandler(stdout_file, maxBytes=max_bytes, backupCount=100)
-    # stdout_handler.setLevel(LOG_LEVEL)
+    stdout_handler.addFilter(NoErrorFilter())
     stderr_handler = RotatingFileHandler(stderr_file, maxBytes=max_bytes, backupCount=100)
     stderr_handler.setLevel('ERROR')
-    console_handler = StreamHandler(sys.stdout)
-    # console_handler.setLevel(LOG_LEVEL)
-    basicConfig(handlers=[stderr_handler, stdout_handler, console_handler], level=LOG_LEVEL)
+    console_handler = logging.StreamHandler(sys.stdout)
+    logging.basicConfig(format='[%(levelname)1.1s %(asctime)s %(module)s:%(lineno)d] %(message)s',
+                        datefmt='%Y%m%d-%H:%M:%S', handlers=[stdout_handler, console_handler, stderr_handler],
+                        level=LOG_LEVEL)
+
+
+def log_exception(typ, value, tb):
+    logging.error("Uncaught exception %s\n%r", exc_info=(typ, value, tb))
 
 
 @click.group()
@@ -51,7 +62,7 @@ def cli():
 @cli.command()
 @click.argument('filename', type=click.Path(exists=True))
 @click.option('--log-dir', default='.log', help='log file base folder')
-def start(filename, log_dir, debug):
+def start(filename, log_dir):
     if not filename.endswith('.py'):
         click.echo('error input filename: {}'.format(filename))
         return
@@ -63,8 +74,14 @@ def start(filename, log_dir, debug):
     for each_name in start_names:
         start_func = getattr(module, each_name, None)
         if callable(start_func):
+            if not os.path.exists(log_dir):
+                os.mkdir(log_dir)
             config_logging(*get_logger_file_name(log_dir, service_name))
-            start_func()
+            try:
+                start_func()
+
+            except Exception:
+                log_exception(*sys.exc_info())
             break
     else:
         click.echo('can not find any start function {} in {}'.format(start_names, filename))
