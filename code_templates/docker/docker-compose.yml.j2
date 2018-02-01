@@ -11,14 +11,14 @@ services:
     env_file:
       - dev.env
     volumes:
-      - ./postgresql:/var/lib/postgresql/data
+      - ~/.{{ project_name }}/postgresql:/var/lib/postgresql/data
     {%- else %}
   postgres:
     image: postgres:10
     ports:
       - "5432:5432"
     env_file:
-      - ~/.{{ project_name }}_env/postgres.env
+      - ~/environment/{{ project_name }}/postgres.env
     volumes:
       - ~/database/postgres:/var/lib/postgresql/data
     {%- endif %}
@@ -38,7 +38,7 @@ services:
     ports:
       - "6379:6379"
     env_file:
-      - ~/.{{ project_name }}_env/postgres.env
+      - ~/environment/{{ project_name }}/redis.env
     {%- endif %}
   {%- endif %}
 
