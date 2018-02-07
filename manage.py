@@ -39,7 +39,7 @@ class NoErrorFilter(logging.Filter):
 
 def config_logging(stdout_file, stderr_file):
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG')
-    max_bytes = 2 ** 10 * 10
+    max_bytes = 1024 * 1024 * 10
     stdout_handler = RotatingFileHandler(stdout_file, maxBytes=max_bytes, backupCount=100)
     stdout_handler.addFilter(NoErrorFilter())
     stderr_handler = RotatingFileHandler(stderr_file, maxBytes=max_bytes, backupCount=100)
